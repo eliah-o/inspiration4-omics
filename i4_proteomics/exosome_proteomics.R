@@ -52,11 +52,10 @@ data_unique <- make_unique(df, "Gene.names", "Accession", delim = ";")
 # Format metadata
 columns_assay <- grep("C00", colnames(data_unique))
 metadata <- metadata[1:24,]
-#Create Post_V_Pre SE object
+# Create Post_V_Pre SE object
 experimental_design <- data.frame(label = paste0(metadata$Sample,"_",metadata$PreVpost), condition =metadata$PreVpost, replicate = metadata$Sample)
 colnames(data_unique) <- c(colnames(data_unique)[1:2],experimental_design$label, colnames(data_unique)[27:length(colnames(data_unique))])
 data_se <- make_se(data_unique, columns_assay, experimental_design)
-setwd("./final_code/")
 save(data_se, file = "./RData_objects/exosomes_postVpre_CV_filt.RData")
 
 # Create R+1_v_Pre SE object 
@@ -118,7 +117,6 @@ write.csv(results_table,"./final_code/results/exosomes_postVpre_limma_arrayWeigh
 
 
 # R+1_V_AllPre
-rm(list=ls())
 load("./final_code/RData_objects/exosomes_immPostVpre_norm_imputed.RData")
 metadata <- read_csv("./Exosomes_i4/Area_sample_code.csv")
 metadata <- metadata[1:24,]
@@ -132,7 +130,7 @@ row.names(data_matrix) <- df_wide$name
 row.names(design_matrix) <- colnames(data_matrix)
 arrayw<-arrayWeights(data_matrix,design=design_matrix)
 fit <- lmFit(data_matrix, design_matrix,weights=arrayw)
-contr <- makeContrasts(ImmPostVSPre=conditionImmediate_Postflight - conditionPreflight
+contr <- makeContrasts(ImmPostVSPre=conditionImmediate_Postflight - conditionPreflight,
                        levels = design_matrix)
 fit <- contrasts.fit(fit, contr)
 fit <- eBayes(fit)
