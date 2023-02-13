@@ -1,0 +1,43 @@
+\documentclass{article}
+\usepackage[paperheight=7.527320862in,paperwidth=6.5in,margin=0in,heightrounded]{geometry}
+\usepackage{graphicx}
+\usepackage[absolute,overlay]{textpos}
+\usepackage[export]{adjustbox}
+\setlength{\TPHorizModule}{1mm}
+\setlength{\TPVertModule}{1mm}
+\usepackage[sfdefault]{roboto}
+\usepackage{float}
+\usepackage[T1]{fontenc}
+
+
+\begin{document}
+\begin{samepage}
+
+\begin{figure}[H]
+    \includegraphics[width=.963\textwidth,keepaspectratio,right]{flowchart-yEd.png}
+\end{figure}
+
+\vspace{-.85cm}
+
+\begin{figure}[H] \centering
+    \begin{minipage}{.01511\textwidth}
+        ~
+    \end{minipage}
+    \begin{minipage}{.484\textwidth}
+        \vspace{2mm}
+        \includegraphics[width=\textwidth,keepaspectratio]{../Figure-3b.pdf}
+    \end{minipage}
+    \begin{minipage}{.005\textwidth}
+        ~
+    \end{minipage}
+    \begin{minipage}{.482\textwidth}
+        \includegraphics[width=\textwidth,keepaspectratio]{../Figure-3c.pdf}
+    \end{minipage}
+\end{figure}
+
+\begin{textblock}{0}(-5.2,0)\fontsize{24pt}{30pt}\selectfont{a}\end{textblock}
+\begin{textblock}{0}(-5.2,56.9)\fontsize{24pt}{30pt}\selectfont{b}\end{textblock}
+\begin{textblock}{0}(77.2,58.5)\fontsize{24pt}{30pt}\selectfont{c}\end{textblock}
+
+\end{samepage}
+\end{document}
