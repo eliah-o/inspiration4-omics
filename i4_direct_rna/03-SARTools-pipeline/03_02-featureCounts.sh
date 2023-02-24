@@ -12,7 +12,7 @@ FEATURE_COUNTS="$4"
 NUM_THREADS=32
 
 eval featureCounts -T $NUM_OF_THREADS \
-    -s 1 -O --fraction -J -L \
+    -s 1 -L \
     -G "$INDEX_FILE_PATH" \
     -a "$ANNOTATION_FILE_PATH" -t exon -g gene_id \
     -o "$FEATURE_COUNTS" \
