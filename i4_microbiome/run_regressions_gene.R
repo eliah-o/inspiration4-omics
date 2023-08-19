@@ -11,7 +11,7 @@ library(purrr)
 
 dtype=strsplit(args[[1]],',') %>% map_chr(2)
 filepath=strsplit(args[[1]],',') %>% map_chr(1)
-outname = paste(strsplit(args[[1]],'/') %>% map_chr(4) %>% strsplit(',') %>% map_chr(1),sep='_')
+outname = paste(strsplit(args[[1]],'/') %>% map_chr(3) %>% strsplit(',') %>% map_chr(1),sep='_')
 print(outname)
 # load metadata
 meta = read.csv('i4_swab_metadata.csv') %>% mutate(location = if_else(Crew.ID == 'Capsule','Capsule',Body.Location))
@@ -26,33 +26,7 @@ meta$Timepoint_Numeric = as.numeric(meta$Timepoint)
 
 # load abundance tables
 
-sanitize_sample_names <- function(data){
-  temp = data %>% t %>% as.data.frame %>% rownames_to_column('temp') %>% mutate(namelengths = nchar(temp))
-  temp = temp %>% mutate(temp = if_else(namelengths>=3 & str_sub(temp,nchar(temp),nchar(temp))=='D',str_sub(temp,1,nchar(temp)-1),temp))
-  return(temp %>% column_to_rownames('temp') %>% select(-namelengths) %>% t %>% data.frame(check.names=F))
-}
-
-oac = meta %>% filter(location == 'Open Air Control' | Body.Location == 'Control Swab (0)' | Body.Location == 'Swab Water')
-oac = oac %>% select(SeqID) %>% unlist %>% unname 
-
-remove_potential_contamination <- function(data,oac){
-  fpg = data %>% select(any_of(oac)) %>% rownames_to_column('microbe') %>% melt 
-  todrop = fpg %>% filter(value>quantile(fpg$value,na.rm=T,.75)) %>% select(microbe) %>% unlist %>% unname %>% unique
-  data = data[setdiff(rownames(data),todrop),]
-  return(data)
-}
-
-if(dtype == 'dna'){
-  print('Loading WGS data')
-  wgs = read.table(filepath,sep='\t',check.names=F,header = T,row.names = 1) 
-  abdata = remove_potential_contamination(sanitize_sample_names(wgs),oac)
-}
-
-if(dtype == 'rna'){
-  print('Loading MTX data')
-  mtx = read.table(filepath,sep='\t',check.names=F,header = T,row.names = 1) 
-  abdata = remove_potential_contamination(mtx,oac)
-}
+abdata = readRDS(filepath)
 
 # run the regressions
 

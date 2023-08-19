@@ -7,19 +7,14 @@ library(broom)
 library(broom.mixed)
 library(reshape2)
 library(lmerTest)
+library(purrr)
 
-dtype=args[[1]]
-org=args[[2]]
-taxlevel=args[[3]]
-filepath=args[[4]]
-algorithm=args[[5]]
-cutoffs=args[[6]]
-dataframedescr=args[[7]]
-outname = paste(org,dtype,taxlevel,algorithm,cutoffs,dataframedescr,sep='_')
-
+dtype=strsplit(args[[1]],',') %>% map_chr(2)
+filepath=strsplit(args[[1]],',') %>% map_chr(1)
+outname = paste(strsplit(args[[1]],'/') %>% map_chr(3) %>% strsplit(',') %>% map_chr(1),sep='_')
+print(outname)
 # load metadata
 meta = read.csv('i4_swab_metadata.csv') %>% mutate(location = if_else(Crew.ID == 'Capsule','Capsule',Body.Location))
-meta$SeqID = gsub('ELMB_','',meta$SeqID)
 meta$SeqID = gsub('SW_','',meta$SeqID)
 meta$Timepoint_Recode = factor(meta$Timepoint)
 levels(meta$Timepoint_Recode) = c(NA,'PRE-LAUNCH','POST-LAUNCH','PRE-LAUNCH','MID-FLIGHT','MID-FLIGHT','POST-LAUNCH','POST-LAUNCH','PRE-LAUNCH')
@@ -29,6 +24,7 @@ meta$Timepoint_Recode2 = factor(meta$Timepoint_Recode2,levels = c('PRE-LAUNCH','
 meta$Timepoint = factor(meta$Timepoint,levels=c('21-Jun','21-Aug','Sept Pre-Launch','Flight 1','Flight 2','Sept Post-Return','November','21-Dec',NA))
 meta$Timepoint_Numeric = as.numeric(meta$Timepoint)
 
+# abdata
 abdata = readRDS(filepath)
 
 # run the regressions
@@ -60,35 +56,32 @@ abdata_t = abdata %>% t %>% data.frame(check.names=F) %>% rownames_to_column('Se
 
 abdata_meta = inner_join(abdata_t,metasub,by='SeqID')
 
-regression_output_overall = list()
 regression_output_skin = list()
 regression_output_skinseparates = list()
 regression_output_nasal = list()
 regression_output_oral = list()
 for(m in microbesofinterest){
- # regression_output_overall[[m]] = try(lmer(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode  + (1|Crew.ID)) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
-  print(m)
-  regression_output_skin[[m]] = try(lmer(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*isskin  + (1|Crew.ID)) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
-  regression_output_nasal[[m]] = try(lmer(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*isnasal + (1|Crew.ID)) %>% tidy %>% mutate(yvar = m) %>%filter(term!='(Intercept)'),silent=T)
-  regression_output_oral[[m]] = try(lmer(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*isoral + (1|Crew.ID)) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
-  regression_output_skinseparates[[m]] = try(lmer(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*Armpit +Timepoint_Recode*web + Timepoint_Recode*nape + Timepoint_Recode*postauric + Timepoint_Recode*fore + Timepoint_Recode*bb + Timepoint_Recode*gc + Timepoint_Recode*Tzone + (1|Crew.ID)) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
+  regression_output_skin[[m]] = try(lm(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*isskin ) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
+  regression_output_nasal[[m]] = try(lm(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*isnasal) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
+  regression_output_oral[[m]] = try(lm(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*isoral) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
+  regression_output_skinseparates[[m]] = try(lm(data = abdata_meta,log(abdata_meta[,m] + minval) ~ Timepoint_Recode*Armpit +Timepoint_Recode*web + Timepoint_Recode*nape + Timepoint_Recode*postauric + Timepoint_Recode*fore + Timepoint_Recode*bb + Timepoint_Recode*gc + Timepoint_Recode*Tzone ) %>% tidy %>% mutate(yvar = m) %>% filter(term!='(Intercept)'),silent=T)
 }
 
 regression_output_skin = bind_rows(regression_output_skin)
 regression_output_skin = regression_output_skin %>% mutate(BH_adjusted = p.adjust(p.value,method='BH'),BY_adjusted = p.adjust(p.value,method='BY'),BONFERRONI_adjusted = p.adjust(p.value,method='bonferroni'))
-write.table(regression_output_skin,paste('regression_output_skin_',outname,'.tsv',sep=''),quote=F,sep='\t')
+write.table(regression_output_skin,paste('regression_output_skin_NON-LMER_',outname,'.tsv',sep=''),quote=F,sep='\t')
 
 regression_output_nasal = bind_rows(regression_output_nasal)
 regression_output_nasal = regression_output_nasal %>% mutate(BH_adjusted = p.adjust(p.value,method='BH'),BY_adjusted = p.adjust(p.value,method='BY'),BONFERRONI_adjusted = p.adjust(p.value,method='bonferroni'))
-write.table(regression_output_nasal,paste('regression_output_nasal_',outname,'.tsv',sep=''),quote=F,sep='\t')
+write.table(regression_output_nasal,paste('regression_output_nasal_NON-LMER_',outname,'.tsv',sep=''),quote=F,sep='\t')
 
 regression_output_oral = bind_rows(regression_output_oral)
 regression_output_oral = regression_output_oral %>% mutate(BH_adjusted = p.adjust(p.value,method='BH'),BY_adjusted = p.adjust(p.value,method='BY'),BONFERRONI_adjusted = p.adjust(p.value,method='bonferroni'))
-write.table(regression_output_oral,paste('regression_output_oral_',outname,'.tsv',sep=''),quote=F,sep='\t')
+write.table(regression_output_oral,paste('regression_output_oral_NON-LMER_',outname,'.tsv',sep=''),quote=F,sep='\t')
 
 regression_output_skinseparates = bind_rows(regression_output_skinseparates)
 regression_output_skinseparates = regression_output_skinseparates  %>% mutate(BH_adjusted = p.adjust(p.value,method='BH'),BY_adjusted = p.adjust(p.value,method='BY'),BONFERRONI_adjusted = p.adjust(p.value,method='bonferroni'))
-write.table(regression_output_skinseparates,paste('regression_output_skin_site_by_site_',outname,'.tsv',sep=''),quote=F,sep='\t')
+write.table(regression_output_skinseparates,paste('regression_output_skin_site_by_site_NON-LMER_',outname,'.tsv',sep=''),quote=F,sep='\t')
 
 
 

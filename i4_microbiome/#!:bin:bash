@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# generate regression config file
+
+while read p;
+
+do
+
+org=$(cat all_file_locs | rev | cut -f1 -d/ | rev | cut -f1 -d_)
