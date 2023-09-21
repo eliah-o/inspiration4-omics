@@ -1,1 +1,0 @@
-Rscript /athena/masonlab/scratch/users/jak4013/cellranger-arc/multiome_process/script/12_multiome_harmony_rds.R /athena/masonlab/scratch/users/jak4013/cellranger-arc/i4_mission/result/multiome_process/test/Metadata/work/combined.multiome.sobj.rds i4_mission_RNA_meta orig.ident
