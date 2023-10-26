@@ -8,8 +8,8 @@ set.seed(seed=0)
 # Read EXOSOMES TABLE, AND METDADA
 # Set working directory 
 #setwd("..")
-Protein_exosomes <- read.delim("./Exosomes_i4/exosomes_data.txt")
-metadata <- read_csv("./Exosomes_i4/Area_sample_code.csv")
+Protein_exosomes <- read.delim("./Exosomes_i4/EVPs_proteomics_preprocessed_data.txt")
+metadata <- read_csv("./Exosomes_i4/EVPs_sample_metadata.csv")
 
 # Extract gene name "GN=.."
 temp <- as.data.frame(Protein_exosomes) %>% tidyr::separate(col=Description, into=c("V1","V2"),sep="GN=" )
