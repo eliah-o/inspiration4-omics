@@ -8,8 +8,8 @@ set.seed(seed=0)
 # Read PLASMA TABLE, AND METDADA
 # Set working directory 
 #setwd("..")
-Protein_seer <- read.delim("./Seer_complete_data_Library_based/Library-based_PAS/Protein_Group_Panel.tsv")
-metadata <- read_csv("./Seer_complete_data_Library_based/metadata_all_samples_collapsed.csv")
+Protein_seer <- read.delim("./Seer_complete_data_Library_based/Library-based_PAS/plasma_proteomics_preprocessed_data.tsv")
+metadata <- read_csv("./Seer_complete_data_Library_based/plasma_metadata_all_samples_collapsed.csv")
 
 # Format data and collapse technical replicates (2 per sample)
 df <- data.frame(Intensity = 10^(Protein_seer$Intensity..Log10.), Protein.IDs = Protein_seer$Protein.Group, name = Protein_seer$Sample.Name, Gene.names = Protein_seer$Gene.Names)
