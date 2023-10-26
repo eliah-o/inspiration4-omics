@@ -53,7 +53,7 @@ time <- c(rep(1,4),rep(2,4), rep(3,4), rep(4,4), rep(5,4), rep(6,4)) # Create Ti
 subject <- rep(1:4,6) # Create subject ids
 
 # Read C18 Hydrophobic LC data
-RPPOS <- read_excel("./1024-2022 Space X plasma RPPOS-NEG extracted data.xlsx") #Read raw metabolomics data
+RPPOS <- read_excel("./metabolomics_RPPOS-NEG_preprocessed_data.xlsx") #Read raw metabolomics data
 rppos_metinfo  <- RPPOS[,c(1,3:7, 38:42),] # Pull out relevant sample information
 colnames(rppos_metinfo) <-c("Name", 
                             "Confidence",
@@ -69,7 +69,7 @@ colnames(rppos_metinfo) <-c("Name",
 rppos_data <-  RPPOS[,c(8:31)] # Pull out metabolomics information
 
 # Read Aqueous Neutral Phase hydrophilic LC data
-ANPPOS <- read_excel("./1024-2022 Space X plasma ANPPOS-NEG extracted data.xlsx")
+ANPPOS <- read_excel("./metabolomics_ANPPOS-NEG_preprocessed_data.xlsx")
 
 anppos_metinfo <- ANPPOS[,c(1:3,3:7,9, 34, 35)]
 colnames(anppos_metinfo)<-c("SUPER_PATHWAY", 
