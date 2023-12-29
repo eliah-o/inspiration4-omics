@@ -1,3 +1,5 @@
+# All codes are written by Ezequiel Dantas (ecd4001@med.cornell.edu)
+
 library(dplyr)
 library(Biobase)
 library(NOISeq)
