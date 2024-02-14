@@ -1,0 +1,368 @@
+---
+title: "GeoMx_EDA"
+author: "Jiwoon Park"
+updated: "03/14/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggpubr)
+library(ggplot2)
+library(dplyr)
+library(pheatmap)
+library(RColorBrewer)
+library(DESeq2)
+library(eulerr)
+library(UpSetR)
+library(fgsea)
+library(ggcorrplot)
+library(GSVA)
+library(GSEABase)
+library(matrixStats)
+```
+
+## I4 GeoMx Skin spatial transcriptomics analysis
+
+The analysis in this markdown starts from the Q3-normalized count matrices and metadata, geomx (RDS file available via NASA GeneLab repository: URL to be updated). We also provide estimated cell proportion object geomx_cellprop, deconvoluted from the HCA reference dataset (source link to be updated).
+
+```{r data_and_theme}
+source("../Code/HelperFunctions.R")
+geomx <- readRDS("../Data/GeoMx_merged_pub.RDS")
+geomx_cellprop <- readRDS("../Data/i4GeoMxData_cellproportionestimates.RDS")
+```
+
+From initial clustering analysis, two outlier samples were detected from the PCA analysis: (1) C001_Pre_OE_1 and (2) C004_Post_VA_1. the final object already excludes those two samples. To generate the UMAP plot in the manuscript:
+
+```{r clustering}
+# PCA
+pca <- prcomp((geomx[,35:ncol(geomx)]), scale=TRUE)
+pcares <- summary(pca)
+d <- data.frame(x = pca$x[,1], y = pca$x[,2], sample = geomx$ROInameJP, Timepoint = geomx$Timepoint, tissue.types = geomx$ROIType, crew = geomx$SlideName)
+ggplot(d, aes(x, y, shape = Timepoint, color = tissue.types)) + 
+  geom_point(size = 3) + 
+  theme_pub + 
+  xlab(paste("PC1: ", round(pcares$importance[2,1],3)*100, "% variance", sep="")) +
+  ylab(paste("PC2: ", round(pcares$importance[2,2],3)*100, "% variance", sep=""))
+
+# UMAP
+umap.rld = umap::umap(geomx[,35:ncol(geomx)])
+umap.df = umap.rld$layout %>% as.data.frame()
+umap.df$sample = geomx$ROInameJP; umap.df$Timepoint = geomx$Timepoint; umap.df$Type = geomx$ROIType; umap.df$crew = geomx$SlideName
+ggplot(umap.df, aes(V1, V2, shape = Timepoint, color = Type)) + 
+  geom_point(size = 4, alpha = 0.7) + 
+  theme_bw() + 
+  xlab("UMAP1") + 
+  ylab("UMAP2") + 
+  stat_ellipse(linetype=2, aes(group=Type)) + 
+  facet_wrap(~Timepoint) + 
+  scale_color_brewer(palette = "Dark2")
+```
+
+Differential expression analysis
+
+```{r}
+# (1) Pre- and Post- spaceflight comparisons
+ddsMatrix <- DESeq2::DESeqDataSetFromMatrix(countData=geomx[,35:ncol(geomx)] %>% t() %>% round(), colData=geomx[,1:35], design=~Timepoint)
+dds <- DESeq(ddsMatrix)
+vsd <- vst(dds)
+overall <- results(dds, contrast=c("Timepoint", "Post", "Pre")) %>% as.data.frame()
+overall_sig = overall %>% filter(padj < 0.05 & log2FoldChange > 0)
+
+# (2) Pre- and Post- spaceflight comparisons, further divided by tissue regions
+ddsMatrix <- DESeq2::DESeqDataSetFromMatrix(countData=geomx[,35:ncol(geomx)] %>% t() %>% round(), colData=geomx[,1:35], design=~ROITime)
+dds <- DESeq(ddsMatrix)
+
+DEG_OE <- results(dds, contrast=c("ROITime", "Post_OE", "Pre_OE")) %>% as.data.frame()
+DEG_IE <- results(dds, contrast=c("ROITime", "Post_IE", "Pre_IE")) %>% as.data.frame()
+DEG_OD <- results(dds, contrast=c("ROITime", "Post_OD", "Pre_OD")) %>% as.data.frame()
+DEG_VA <- results(dds, contrast=c("ROITime", "Post_VA", "Pre_VA")) %>% as.data.frame()
+
+padj_cutoff=0.5; log2FoldChange_cutoff=0.1
+DEG_OE_sig <- DEG_OE %>% filter(padj < padj_cutoff & abs(log2FoldChange) > log2FoldChange_cutoff)
+DEG_IE_sig <- DEG_IE %>% filter(padj < padj_cutoff & abs(log2FoldChange) > log2FoldChange_cutoff)
+DEG_OD_sig <- DEG_OD %>% filter(padj < padj_cutoff & abs(log2FoldChange) > log2FoldChange_cutoff)
+DEG_VA_sig <- DEG_VA %>% filter(padj < padj_cutoff & abs(log2FoldChange) > log2FoldChange_cutoff)
+DEG_VA_sig <- DEG_VA %>% filter(pvalue < 0.01 & abs(log2FoldChange) > 0)
+
+# compare DEGs
+venndf <- list(overall = rownames(overall_sig), 
+               OE = rownames(DEG_OE_sig),
+               IE = rownames(DEG_IE_sig), 
+               OD = rownames(DEG_OD_sig), 
+               VA = rownames(DEG_VA_sig))
+
+#plot(euler(venndf, shape="ellipse"), quantities=TRUE)
+UpSetR::upset(fromList(venndf), keep.order=TRUE, order.by = "freq")
+```
+
+```{r volcano_overall}
+FC_cutoff = 0.5; adjp_cutoff = 0.1
+
+# get pathways to use
+pathways.hallmark <- gmtPathways("../../Codes/pathwaydata/h.all.v7.5.1.symbols.gmt")
+pathways.c2 <- gmtPathways("../../Codes/pathwaydata/c2.all.v7.5.1.symbols.gmt")
+pathways.c5 <- gmtPathways("../../Codes/pathwaydata/c5.all.v7.5.1.symbols.gmt")
+pathways.c7 <- gmtPathways("../../Codes/pathwaydata/c7.all.v7.5.1.symbols.gmt")
+pathwaylist <- list("hallmark" = pathways.hallmark, "canonical" = pathways.c2, "gene_ontology" = pathways.c5, "immune" = pathways.c7)
+
+# generate volcano plots: overall comparison
+genedf <- overall
+processed_df <- genedf %>% process_voldf()
+subdf <- processed_df[[2]] %>% as.data.frame()
+subdf_degs <- c(nrow(subdf[subdf$direction == "up",]), nrow(subdf[subdf$direction == "down",]))
+volcano_plot(df = processed_df[[1]], subdf = processed_df[[2]], 
+             plotname = paste("Volcano plot: ", "overall Post vs. Pre flight", ", |FC| >", FC_cutoff, " and adj.p-value <", adjp_cutoff, sep="")) + 
+  labs(subtitle = paste("(", subdf_degs[1], " up-regulated and ", subdf_degs[2], " down-regulated genes.)", sep="")) + 
+  theme(plot.subtitle = element_text(hjust = 1))
+
+# or group of volcano plots by region types
+ggarrange(run_volcano(DEG_OE, "OE"), run_volcano(DEG_IE, "IE"), run_volcano(DEG_OD, "OD"), run_volcano(DEG_VA, "VA"), ncol=2, nrow=2)
+
+# run pathway analysis
+# can be looped to run all analyses
+for(path in c("hallmark", "canonical", "gene_ontology", "immune")){
+  pathway_db <- path
+  pathway_choice <- pathwaylist[[pathway_db]]
+  pathway_df <- genedf
+  pathway_df$GENENAME <- rownames(pathway_df)
+  #can be saved with: write.csv(pathway_analysis(df = pathway_df , pathway = pathway_choice), paste("../Analysis/PathwayAnalysis/Pathway_All_", path, "_VA_all_DEGs.csv", sep=""))
+}
+
+# or run individually
+genedf <- overall
+pathway_db <- "hallmark"
+pathway_choice <- pathwaylist[[pathway_db]]
+pathway_df <- genedf
+pathway_df$GENENAME <- rownames(pathway_df)
+plot_pathways(fgseaRes = pathway_analysis(df = pathway_df , pathway = pathway_choice), p_cut = 0.05)
+
+# visualize into heatmap or barplot sets for multi-condition comparisons
+pathway_db <- "hallmark"
+pathway_choice <- pathwaylist[[pathway_db]]
+genedf_OE = DEG_OE; genedf_OE$GENENAME <- rownames(genedf_OE); pres_OE = pathway_analysis(df = genedf_OE, pathway = pathway_choice)
+genedf_IE = DEG_IE; genedf_IE$GENENAME <- rownames(genedf_IE); pres_IE = pathway_analysis(df = genedf_IE, pathway = pathway_choice)
+genedf_OD = DEG_OD; genedf_OD$GENENAME <- rownames(genedf_OD); pres_OD = pathway_analysis(df = genedf_OD, pathway = pathway_choice)
+genedf_VA = DEG_VA; genedf_VA$GENENAME <- rownames(genedf_VA); pres_VA = pathway_analysis(df = genedf_VA, pathway = pathway_choice)
+
+pres_OE$ROIType <- "OE"; pres_IE$ROIType <- "IE"; pres_OD$ROIType <- "OD"; pres_VA$ROIType <- "VA"
+pres_all = rbind(pres_OE, pres_IE, pres_OD, pres_VA)
+pres_all$ROIType <- factor(pres_all$ROIType, levels=c("OE", "IE", "OD", "VA"))
+pres_all$pathway = gsub("HALLMARK_", "", pres_all$pathway)
+pres_all$pathway = gsub("_", " ", pres_all$pathway)
+plot_pathways(pres_all, p_cut = 1) + facet_wrap(~ROIType, ncol=4)
+
+path_heatdf = pres_all[,c("pathway", "NES", "ROIType")] %>% tidyr::spread(ROIType, NES)
+rownames(path_heatdf) = path_heatdf$pathway
+pheatmap::pheatmap(path_heatdf[,2:5] %>% t(), scale="none", cluster_rows = FALSE)
+```
+
+Below shows multiple methods we used to visualize cellular proportion changes:
+
+```{r cellprop}
+ggplot(geomx_cellprop %>% tidyr::gather(celltype, proportions, 35:ncol(geomx_cellprop)) %>% group_by(ROInameJP, celltype), 
+       aes_string(y="proportions", x="Timepoint", fill="Timepoint")) + 
+  geom_boxplot(color="grey30", alpha=0.75) + 
+  #scale_fill_brewer(palette="Set1") + 
+  scale_fill_manual(values=c("#377eb8", "#e41a1c")) + 
+  facet_grid(~celltype) + 
+  ggtitle(paste("Cell Proportion Change during flight, overall", sep=" ")) + stat_compare_means(label="p.signif", hjust=-1) + theme_bw()
+
+cellprop_plot <- geomx_cellprop %>% tidyr::gather(celltype, proportions, 35:ncol(geomx_cellprop)) %>% group_by(ROInameJP, celltype)
+ggplot(cellprop_plot, aes(x=ROInameJP, y=proportions, fill=celltype)) + 
+  geom_bar(stat="identity", position="fill", width=1, color="white") + 
+  #coord_polar("y", start=0) + 
+  #facet_grid(~Timepoint) + 
+  theme_void()
+
+cellprop_plot <- geomx_cellprop %>% tidyr::gather(celltype, proportions, 35:ncol(geomx_cellprop)) %>% group_by(Timepoint, celltype) %>% summarise(AverageProp = mean(proportions))
+ggplot(cellprop_plot, aes(x="", y=AverageProp, fill=celltype)) + 
+  geom_bar(stat="identity", position="fill", width=1, color="white") + 
+  #coord_polar("y", start=0) + 
+  facet_wrap(~Timepoint) + 
+  theme_void()
+
+cellprop_plot <- geomx_cellprop %>% tidyr::gather(celltype, proportions, 35:ncol(geomx_cellprop)) %>% group_by(ROIType, Timepoint, celltype) %>% summarise(AverageProp = mean(proportions))
+cellprop_plot$Type = paste(cellprop_plot$ROIType, cellprop_plot$Timepoint, sep="_")
+ggplot(cellprop_plot, aes(x="", y=AverageProp, fill=celltype)) + 
+  geom_bar(stat="identity", position="fill", width=1, color="white") + 
+  coord_polar("y", start=0) + 
+  facet_wrap(~Type, ncol=4) + theme_void()
+
+cellprop_plot <- geomx_cellprop %>% tidyr::gather(celltype, proportions, 35:ncol(geomx_cellprop)) %>% group_by(Timepoint, celltype, ROIType) %>% summarise(AverageProp = mean(proportions))
+cellprop_plot0 <- cellprop_plot[which(cellprop_plot$Timepoint == "Pre"),]
+cellprop_plot$AveragePropFC <- (cellprop_plot$AverageProp+0.000001)/(cellprop_plot0$AverageProp+0.000001)
+ggplot(cellprop_plot[which(cellprop_plot$Timepoint == "Post"),], aes(x=Timepoint, y=AveragePropFC, fill=celltype)) + 
+  geom_bar(stat="identity", position="dodge", width=1, color="white") + 
+  #coord_polar("y", start=0) + 
+  ylim(0,2) + 
+  facet_grid(~ROIType) + 
+  theme_bw()
+
+cellprop_hdf = cellprop_plot[which(cellprop_plot$Timepoint == "Post"),c(2,3,5)] %>% group_by(ROIType) %>% tidyr::spread("celltype", "AveragePropFC") %>% as.data.frame()
+rownames(cellprop_hdf) = cellprop_hdf$ROIType
+cellprop_hdf = cellprop_hdf[,2:ncol(cellprop_hdf)]
+cellprop_hdf = cellprop_hdf[c("OE", "IE", "OD", "VA"),]
+pheatmap(as.matrix(cellprop_hdf) %>% scale(), scale="row", cluster_rows = FALSE)
+cellprop_hdf[,2:ncol(cellprop_hdf)] %>% as.matrix()
+
+```
+
+Correlation plots to see cellular microenvironment changes
+
+```{r cellprop_corr}
+b <- as.character(unique(geomx_cellprop$ROITime))
+df_forcorplot <- data.frame(geomx_cellprop[,35:43])  #data.frame(geomx_cellprop[,c(19,17,18,15,13,16,11,20,14,8,9,7,12,6)]) # cell type order
+corplot_byROItime <- vector('list', length(b))
+for(i in 1:length(b)) {
+  corplot_byROItime[[i]] <- ggcorrplot(cor((df_forcorplot[geomx_cellprop$ROITime == b[i],])), 
+                                        hc.order = FALSE, 
+                                        colors = c("blue", "grey", "red"),
+                                        insig = "pch", #"blank",
+                                        p.mat = cor_pmat((df_forcorplot[geomx_cellprop$ROITime == b[i],]))) + 
+    theme_pubclean() + 
+    ggtitle(paste(b[i])) +
+    theme(axis.text.x = element_text(angle=45, hjust=1), 
+        axis.title.x = element_blank(), 
+        axis.title.y = element_blank())
+}
+ggarrange(plotlist = corplot_byROItime, nrow = 2, ncol = 4)
+```
+
+Individual expression boxplots can be drawn as follows:
+
+```{r expressionplots}
+geneplot_df <- geomx[geomx$ROIType %in% c("OE", "IE", "OD", "VA"),]
+geneplot_df$ROIType <- factor(geneplot_df$ROIType, levels=c("OE", "IE", "OD", "VA"))
+genenames = "DPP4"
+ggplot(geneplot_df, aes_string(y=genenames, x="Timepoint", fill="Timepoint")) + 
+  geom_boxplot(color="grey30", alpha=0.75) + 
+  scale_fill_brewer(palette="Set1") + 
+  coord_flip() + 
+  ggtitle(paste("Expression Change during flight:", genenames, sep=" ")) + 
+  facet_wrap(~ROIType, ncol=1) + 
+  stat_compare_means(label="p.signif", hjust=-.7) + 
+  theme_pubr() + theme(legend.position="none")
+```
+
+Expression profiles of multiple genes can be shown in a form of heatmaps:
+
+```{r heatmap}
+geneplot_df <- geomx[geomx$ROIType %in% c("OE", "IE", "OD", "VA"),]
+geneplot_df$ROIType <- factor(geneplot_df$ROIType, levels=c("OE", "IE", "OD", "VA"))
+
+annoCol <- list(SlideName = c(C001 = "#f0e7e7", C002 = "#c1440e", C003 = "#e77d11", C004 = "#fda600"), 
+                ROIType = c(OE = "#1b9e77", IE = "#d95f02", OD = "#7570b3", VA = "#e7298a"), 
+                Timepoint = c(Pre = "#377eb8", Post = "#e41a1c"))
+avgexp = geneplot_df %>% tidyr::gather(genename, value, 35:ncol(geneplot_df)) %>% group_by(ROIType, Timepoint, genename) %>% summarise(AverageExp = mean(value)) %>% tidyr::spread(genename, AverageExp)
+sdexp = geneplot_df %>% tidyr::gather(genename, value, 35:ncol(geneplot_df)) %>% group_by(ROIType, Timepoint, genename) %>% summarise(AverageExp = sd(value)) %>% tidyr::spread(genename, AverageExp)
+rownames(avgexp) = paste(avgexp$Timepoint, avgexp$ROIType, sep="_")
+
+avgexp_FC <- avgexp[c(1,3,5,7),3:ncol(avgexp)]/avgexp[c(2,4,6,8),3:ncol(avgexp)]
+rownames(avgexp_FC) <- avgexp$ROIType[c(1,3,5,7)]
+
+genenames = c("STAT3", "STAT5B", "JAK1", "FLG", "SPINK5", "DSG1", "DSP", "CDSN", "ADAM17", "EGFR") # can check whether they exist in geomx by the following line: genenames <- genenames[which(genenames %in% colnames(geneplot_df))]
+
+# to plot fold changes
+geneplot_ref = colMeans(geneplot_df[geneplot_df$Timepoint=="Pre",35:ncol(geneplot_df)])
+
+pheatmap::pheatmap(geneplot_df[order(geneplot_df$ROIType, geneplot_df$Timepoint, geneplot_df$SlideName),genenames[1:length(genenames)]],# %>% scale(), 
+                   color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdGy")))(100), 
+                   border_color = "grey60", 
+                   cluster_cols = TRUE, cluster_rows = FALSE, 
+                   legend = TRUE, scale = "column",
+                   annotation_row = geneplot_df[,c("Timepoint", "ROIType", "SlideName")],
+                   annotation_colors = annoCol,
+                   show_colnames = TRUE, show_rownames = FALSE)
+
+geneplot_df_heatmap <- geneplot_df[geneplot_df$Timepoint=="Post", genenames]/geneplot_ref[genenames]
+pheatmap::pheatmap(geneplot_df_heatmap[order(geneplot_df$ROIType[geneplot_df$Timepoint=="Post"], geneplot_df$Timepoint[geneplot_df$Timepoint=="Post"], geneplot_df$SlideName[geneplot_df$Timepoint=="Post"]),],# %>% scale(), 
+                   color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdGy")))(100), 
+                   border_color = "grey60", 
+                   cluster_cols = T, cluster_rows = F, 
+                   legend = TRUE, scale = "column",
+                   annotation_row = geneplot_df[,c("ROIType", "SlideName")],
+                   annotation_colors = annoCol,
+                   show_colnames = T, show_rownames = F)
+
+annoCol2 <- list(ROIType = c(OE = "#1b9e77", IE = "#d95f02", OD = "#7570b3", VA = "#e7298a"), 
+                 Timepoint = c(Post = "#e41a1c", Pre = "#377eb8"))
+annoCol_df <- avgexp[,c("ROIType", "Timepoint")]
+annoCol_df$Timepoint <- factor(annoCol_df$Timepoint, levels = c("Pre", "Post"))
+
+avgexp_plot = avgexp[order(avgexp$ROIType, avgexp$Timepoint),c("ROIType", "Timepoint", genenames)]
+rownames(avgexp_plot) = paste(avgexp_plot$Timepoint, avgexp_plot$ROIType, sep="_")
+avgexp_plot0 = avgexp_plot[,3:ncol(avgexp_plot)]; rownames(avgexp_plot0) = rownames(avgexp_plot)
+pheatmap::pheatmap(avgexp_plot0, #%>% scale(), 
+                   color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdGy")))(100), 
+                   border_color = "grey60", 
+                   cluster_cols = T, cluster_rows = F, 
+                   legend = TRUE, scale = "column",
+                   show_colnames = T, show_rownames = T)
+avgexp_plot1 <- log2(avgexp_plot0[c(1,3,5,7),])-log2(avgexp_plot0[c(2,4,6,8),]); rownames(avgexp_plot1) <- rownames(avgexp_plot0)[c(1,3,5,7)]
+pheatmap::pheatmap(avgexp_plot1, #%>% scale(), 
+                   color = colorRampPalette(rev(brewer.pal(n = 10, name = "RdGy")))(100), 
+                   border_color = "grey60", 
+                   cluster_cols = T, cluster_rows = F, 
+                   legend = TRUE, scale = "column",
+                   show_colnames = T, show_rownames = T)
+```
+
+Single sample GSEA (ssGSEA) was performed to see gene enrichments by regions of interest (ROI):
+
+```{r ssgsea}
+# make genesets
+geneset <- readRDS("../Data/Custom_GeneSets.RDS")
+
+ssgsea_rawmat <- geomx[,35:ncol(geomx)] %>% t()
+colnames(ssgsea_rawmat) <- geomx$ROInameJP
+ssgsea_res <- gsva(ssgsea_rawmat, method="ssgsea", geneset)
+
+ssgsea_plotdf <- t(ssgsea_res) %>% as.data.frame(); ssgsea_plotdf$ROInameJP <- rownames(ssgsea_plotdf)
+ssgsea_plotdf01 <- dplyr::inner_join(geomx[,1:35], ssgsea_plotdf, by="ROInameJP")
+ssgsea_plotdf01 <- ssgsea_plotdf01[ssgsea_plotdf01$ROIType %in% c("OE", "IE", "OD", "VA"),]
+ssgsea_plotdf01$ROIType <- factor(ssgsea_plotdf01$ROIType, levels=c("OE", "IE", "OD", "VA"))
+
+pheatmap((ssgsea_plotdf01[order(ssgsea_plotdf01$ROIType, ssgsea_plotdf01$Timepoint, ssgsea_plotdf01$SlideName),36:ncol(ssgsea_plotdf01)]) %>% t(), 
+         annotation_col = ssgsea_plotdf01[,c("Timepoint", "ROIType", "SlideName")], 
+         color = colorRampPalette(rev(brewer.pal(n = 10, name = "BrBG")))(100), 
+         annotation_colors = annoCol, 
+         show_rownames = TRUE, show_colnames = FALSE, 
+         scale = "row", cluster_rows = TRUE, cluster_cols = FALSE)
+
+ssgsea_avg = ssgsea_plotdf01 %>% tidyr::gather(geneset, value, 36:ncol(ssgsea_plotdf01)) %>% group_by(ROIType, Timepoint, geneset) %>% summarise(AvgEnr = mean(value)) %>% tidyr::spread(geneset, AvgEnr) %>% as.data.frame()
+ssgsea_sdev = ssgsea_plotdf01 %>% tidyr::gather(geneset, value, 36:ncol(ssgsea_plotdf01)) %>% group_by(ROIType, Timepoint, geneset) %>% summarise(Sdev = sd(value)) %>% tidyr::spread(geneset, Sdev) %>% as.data.frame()
+rownames(ssgsea_avg) = paste(ssgsea_avg$Timepoint, ssgsea_avg$ROIType, sep="_")
+
+avgexp_plot = ssgsea_avg[order(ssgsea_avg$ROIType, ssgsea_avg$Timepoint),c("ROIType", "Timepoint", names(geneset))]
+rownames(avgexp_plot) = paste(avgexp_plot$Timepoint, avgexp_plot$ROIType, sep="_")
+avgexp_plot0 = avgexp_plot[,3:ncol(avgexp_plot)]; rownames(avgexp_plot0) = rownames(avgexp_plot)
+pheatmap::pheatmap(avgexp_plot0, #%>% scale(), 
+                   color = colorRampPalette(rev(brewer.pal(n = 10, name = "BrBG")))(100), 
+                   border_color = "grey60", 
+                   cluster_cols = T, cluster_rows = F, 
+                   legend = TRUE, scale = "column",
+                   #annotation_row = annoCol_df %>% t(),
+                   #annotation_colors = annoCol2,
+                   show_colnames = T, show_rownames = T)
+
+pheatmap::pheatmap(avgexp_plot0[c(1,3,5,7),]/avgexp_plot0[c(2,4,6,8),],
+                   color = colorRampPalette(rev(brewer.pal(n = 10, name = "BrBG")))(100), 
+                   border_color = "grey60", 
+                   cluster_cols = TRUE, cluster_rows = FALSE, 
+                   scale = "column",
+                   show_colnames = TRUE, show_rownames = TRUE)
+
+avgexp_df_gg <- avgexp_plot0 %>% tidyr::gather()
+avgexp_df_gg$ROIType <- factor(rep(avgexp$ROIType, length(unique(avgexp_df_gg$key))), levels=c("OE", "IE", "OD", "VA"))
+avgexp_df_gg$Timepoint <- factor(rep(avgexp$Timepoint, length(unique(avgexp_df_gg$key))), levels=c("Pre", "Post"))
+sdexp_df_gg <- ssgsea_sdev[,3:ncol(ssgsea_sdev)] %>% tidyr::gather()
+avgexp_df_gg$sdev <- sdexp_df_gg$value
+
+ggplot(avgexp_df_gg, aes(x=Timepoint, y=value, fill=Timepoint)) + 
+  geom_bar(stat="identity", alpha=0.8, position=position_dodge(0.9)) + 
+  facet_grid(key~ROIType, scales ="free") + 
+  scale_color_manual(values=c("#377eb8", "#e41a1c")) + scale_fill_manual(values=c("#377eb8", "#e41a1c")) + theme_bw() + 
+  geom_errorbar(aes(ymin=value, ymax=value+sdev), width=0.2, position=position_dodge(0.9))
+
+```
