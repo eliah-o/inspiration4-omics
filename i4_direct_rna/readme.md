@@ -3,7 +3,7 @@
 A collection of scripts, Jupyter notebooks, assets, and LaTeX files for analysis
 and processing of direct RNA data, and for its visualization.
 
-
+Nelson, T., & Grigorev, K. (2024). Inspiration4 Mission Direct RNA Scripts. Zenodo. https://doi.org/10.5281/zenodo.10805474
 
 ### 01-process-fast5/01_01-basecall.sh
 
