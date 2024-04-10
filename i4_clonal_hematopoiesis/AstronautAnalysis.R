@@ -2,12 +2,10 @@ library(tidyverse)
 library(data.table)
 library(vcfR)
 
-setwd("~/Documents/Irenaeus/Astronaut/")
-
-astronaut_data <- "~/Documents/Irenaeus/Astronaut/data/variantplex_astronaut.csv"
-whereincycle <- "~/Documents/Irenaeus/Astronaut/data/astronaut_whereincycle_key.csv"
-astronaut_pileup_data <- "~/Documents/Irenaeus/Astronaut/data/samples.pileup.vcf.gz"
-pon_pileup_data <- "~/Documents/Irenaeus/Astronaut/data/pon.pileup.vcf.gz"
+astronaut_data <- "data/variantplex_astronaut.csv"
+whereincycle <- "data/astronaut_whereincycle_key.csv"
+astronaut_pileup_data <- "data/samples.pileup.vcf.gz"
+pon_pileup_data <- "data/pon.pileup.vcf.gz"
 
 astronaut <- fread(astronaut_data)
 whereincycle <- fread(whereincycle)
@@ -97,7 +95,7 @@ astronaut <- astronaut %>%
     whereincycle
   )
 
-source("/Users/irenaeuschan/Documents/Irenaeus/ArcherDX/utils/timepoints_function.R")
+source("utils/timepoints_function.R")
 
 # Define Lenient Pass
 astronaut_pileup <- astronaut_pileup %>% 
@@ -153,12 +151,11 @@ D <- left_join(M_intersect_PR, D_ %>% mutate(ind_key = paste(Individual, key, se
   rbind(D_ %>% mutate(ind_key = paste(Individual, key, sep = " ")) %>% filter(ind_key == '3 chr2 25244297 C>T')) %>%
   mutate(in_cohort = TRUE)
 
-#astronaut_ArCH_data <- fread("/Users/irenaeuschan/Documents/Irenaeus/ArcherDX/data/timepoints_result_astronaut.csv")
-#astronaut_ArCH_data <- D %>% filter(fromwhere == "Carlos" | fromwhere == "Astronaut") # This D dataframe is from PaperFiguresArcher.Rmd
-controls <- fread("~/Documents/Irenaeus/ArcherDX/data/NoTreatment_Timepoints.csv") %>% filter(fromwhere == "Carlos")
+controls <- fread("data/NoTreatment_Timepoints.csv")
 
 setdiff(colnames(D), colnames(controls))
 
+# The specific PD variants we are interested in exploring
 ind_key_pd <- c("4 chr2 25234347 G>C", "4 chr2 25235778 C>G", "3 chr2 25241591 C>A", "4 chr2 25246732 GTCGTGGCACACCGGGAACAGCTTCCCCGC>G", "4 chr2 25247647 G>A", "3 chr2 25244297 C>T")
 
 to_plot <- rbind(
