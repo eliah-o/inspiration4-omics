@@ -171,7 +171,8 @@ to_plot <- rbind(
     filter(ind_key %in% ind_key_pd) %>%
     select(change_in_VAF, change_in_days, change_in_VAF_months, fromwhere),
   controls %>%
-    select(change_in_VAF, change_in_days, change_in_VAF_months, fromwhere)
+    select(change_in_VAF, change_in_days, change_in_VAF_months, fromwhere) %>%
+    mutate(fromwhere = "Normals")
 )
 
 spider_VAF_months <- to_plot %>%
